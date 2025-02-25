@@ -18,14 +18,14 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// OAuthHandler содержит конфигурацию OAuth для разных провайдеров
+// OAuthHandler содержит конфигурацию OAuth для разных провайдеров.
 type OAuthHandler struct {
 	GoogleConfig   *oauth2.Config
 	VKConfig       *oauth2.Config
 	TelegramConfig *config.TelegramConfig
 }
 
-// NewOAuthHandler создает новый экземпляр OAuthHandler с конфигурациями для Google, VK и Telegram
+// NewOAuthHandler создает новый экземпляр OAuthHandler с конфигурациями для Google, VK и Telegram.
 func NewOAuthHandler(googleConfig, vkConfig *oauth2.Config, telegramConfig *config.TelegramConfig) *OAuthHandler {
 	return &OAuthHandler{
 		GoogleConfig:   googleConfig,
@@ -36,10 +36,11 @@ func NewOAuthHandler(googleConfig, vkConfig *oauth2.Config, telegramConfig *conf
 
 // AuthRedirect godoc
 // @Summary OAuth Redirect
-// @Description Redirect to OAuth provider for authentication
-// @Tags auth
-// @Param provider path string true "OAuth provider"
-// @Success 302 {string} string "redirect"
+// @Description Redirects the user to the chosen OAuth provider's authentication page.
+// @Tags Auth
+// @Param provider path string true "OAuth provider" Enums(google, vk, telegram)
+// @Success 302 {string} string "Redirect URL"
+// @Failure 400 {object} map[string]string "Error message"
 // @Router /auth/{provider} [get]
 func (h *OAuthHandler) AuthRedirect(c *fiber.Ctx) error {
 	provider := c.Params("provider")
@@ -60,12 +61,19 @@ func (h *OAuthHandler) AuthRedirect(c *fiber.Ctx) error {
 
 // AuthCallback godoc
 // @Summary OAuth Callback
-// @Description Handle OAuth provider callback
-// @Tags auth
-// @Param provider path string true "OAuth provider"
-// @Param code query string false "Authorization code (not used for Telegram)"
-// @Success 200 {object} TokenResponse
-// @Failure 400 {object} ErrorResponse
+// @Description Handles the OAuth callback from the specified provider.
+// @Tags Auth
+// @Param provider path string true "OAuth provider" Enums(google, vk, telegram)
+// @Param code query string false "Authorization code (used for Google and VK)"
+// @Param id query string false "Telegram user id (for Telegram)"
+// @Param auth_date query string false "Telegram auth date (for Telegram)"
+// @Param hash query string false "Telegram hash (for Telegram)"
+// @Param first_name query string false "Telegram first name (optional)"
+// @Param last_name query string false "Telegram last name (optional)"
+// @Param username query string false "Telegram username (optional)"
+// @Param photo_url query string false "Telegram photo URL (optional)"
+// @Success 200 {object} map[string]interface{} "TokenResponse"
+// @Failure 400 {object} map[string]string "Error message"
 // @Router /auth/{provider}/callback [get]
 func (h *OAuthHandler) AuthCallback(c *fiber.Ctx) error {
 	provider := c.Params("provider")
@@ -83,6 +91,7 @@ func (h *OAuthHandler) AuthCallback(c *fiber.Ctx) error {
 
 // ---------------- Google Callback ----------------
 
+// GoogleUserInfo представляет данные пользователя, полученные от Google.
 type GoogleUserInfo struct {
 	ID            string `json:"id"`
 	Email         string `json:"email"`
@@ -94,6 +103,7 @@ type GoogleUserInfo struct {
 	Locale        string `json:"locale"`
 }
 
+// getGoogleUserInfo извлекает информацию о пользователе из Google по access token.
 func getGoogleUserInfo(token *oauth2.Token) (*GoogleUserInfo, error) {
 	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
 	if err != nil {
@@ -110,6 +120,8 @@ func getGoogleUserInfo(token *oauth2.Token) (*GoogleUserInfo, error) {
 	return &userInfo, nil
 }
 
+// handleGoogleCallback обрабатывает callback от Google OAuth.
+// Он обменивает код на токен, получает информацию о пользователе и генерирует JWT.
 func (h *OAuthHandler) handleGoogleCallback(c *fiber.Ctx) error {
 	code := c.Query("code")
 	if code == "" {
@@ -143,6 +155,7 @@ func (h *OAuthHandler) handleGoogleCallback(c *fiber.Ctx) error {
 
 // ---------------- VK Callback ----------------
 
+// VKUserInfo представляет данные пользователя, полученные от VK.
 type VKUserInfo struct {
 	Response []struct {
 		ID        int    `json:"id"`
@@ -151,6 +164,7 @@ type VKUserInfo struct {
 	} `json:"response"`
 }
 
+// getVKUserInfo извлекает информацию о пользователе из VK по access token.
 func getVKUserInfo(token *oauth2.Token) (*VKUserInfo, error) {
 	resp, err := http.Get("https://api.vk.com/method/users.get?access_token=" + token.AccessToken + "&v=5.131")
 	if err != nil {
@@ -167,6 +181,8 @@ func getVKUserInfo(token *oauth2.Token) (*VKUserInfo, error) {
 	return &userInfo, nil
 }
 
+// handleVKCallback обрабатывает callback от VK OAuth.
+// Он обменивает код на токен, получает информацию о пользователе и генерирует JWT.
 func (h *OAuthHandler) handleVKCallback(c *fiber.Ctx) error {
 	code := c.Query("code")
 	if code == "" {
@@ -177,19 +193,19 @@ func (h *OAuthHandler) handleVKCallback(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "failed to exchange token: " + err.Error()})
 	}
 
-	// Если scope email запрошен, VK возвращает его вместе с токеном
+	// Если scope email запрошен, VK возвращает его вместе с токеном.
 	email, _ := token.Extra("email").(string)
 	if email == "" {
-		// Если email не передан, пытаемся получить информацию через API
+		// Если email не передан, пытаемся получить информацию через API.
 		vkUser, err := getVKUserInfo(token)
 		if err != nil || len(vkUser.Response) == 0 {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "failed to get VK user info"})
 		}
-		// Формируем фиктивный email на основе VK id
+		// Формируем фиктивный email на основе VK id.
 		email = "vk_user_" + strconv.Itoa(vkUser.Response[0].ID) + "@vk.com"
 	}
 
-	// Поиск или создание пользователя по email
+	// Поиск или создание пользователя по email.
 	userID, err := getOrCreateUser("vk", email)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process user: " + err.Error()})
@@ -204,6 +220,8 @@ func (h *OAuthHandler) handleVKCallback(c *fiber.Ctx) error {
 
 // ---------------- Telegram Callback ----------------
 
+// handleTelegramCallback обрабатывает callback от Telegram Login Widget.
+// Он валидирует полученные данные и генерирует JWT.
 func (h *OAuthHandler) handleTelegramCallback(c *fiber.Ctx) error {
 	// Telegram Login Widget передает данные через GET-параметры, включая хэш для проверки подлинности.
 	idStr := c.Query("id")
@@ -215,7 +233,7 @@ func (h *OAuthHandler) handleTelegramCallback(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing telegram auth parameters"})
 	}
 
-	// Валидация данных по алгоритму Telegram
+	// Валидация данных по алгоритму Telegram.
 	if !validateTelegramAuth(c, h.TelegramConfig.BotToken) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid telegram auth data"})
 	}
@@ -225,10 +243,10 @@ func (h *OAuthHandler) handleTelegramCallback(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid telegram id"})
 	}
 
-	// Формирование фиктивного email на основе Telegram id, т.к. email обычно не передается
+	// Формирование фиктивного email на основе Telegram id (email обычно не передается).
 	email := "telegram_" + strconv.Itoa(telegramID) + "@telegram.com"
 
-	// Поиск или создание пользователя по email
+	// Поиск или создание пользователя по email.
 	userID, err := getOrCreateUser("telegram", email)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process user: " + err.Error()})
@@ -244,8 +262,9 @@ func (h *OAuthHandler) handleTelegramCallback(c *fiber.Ctx) error {
 // ---------------- Вспомогательные функции ----------------
 
 // validateTelegramAuth проверяет целостность данных, полученных от Telegram Login Widget.
+// Алгоритм проверки описан в документации Telegram: https://core.telegram.org/widgets/login
 func validateTelegramAuth(c *fiber.Ctx, botToken string) bool {
-	// Список ключей, которые будут использоваться для формирования строки проверки
+	// Список ключей для формирования строки проверки.
 	keys := []string{"auth_date", "first_name", "id", "last_name", "photo_url", "username"}
 	var dataCheckArr []string
 	for _, key := range keys {
@@ -254,14 +273,14 @@ func validateTelegramAuth(c *fiber.Ctx, botToken string) bool {
 			dataCheckArr = append(dataCheckArr, key+"="+val)
 		}
 	}
-	// Сортируем массив по возрастанию
+	// Сортируем массив в лексикографическом порядке.
 	sort.Strings(dataCheckArr)
 	dataCheckString := strings.Join(dataCheckArr, "\n")
 
-	// Вычисляем секретный ключ: SHA256 от botToken
+	// Вычисляем секретный ключ как SHA256 от botToken.
 	secretKey := sha256.Sum256([]byte(botToken))
 
-	// Вычисляем HMAC-SHA256 от dataCheckString с использованием secretKey
+	// Вычисляем HMAC-SHA256 от dataCheckString с использованием secretKey.
 	hmacHash := hmac.New(sha256.New, secretKey[:])
 	hmacHash.Write([]byte(dataCheckString))
 	computedHash := hex.EncodeToString(hmacHash.Sum(nil))

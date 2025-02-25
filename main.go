@@ -14,19 +14,27 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/swagger"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"github.com/joho/godotenv"
+
+	_ "github.com/Kudzeri/threads-clone-api/docs" // Импорт сгенерированных swagger-документов
 )
 
+// @title Threads Clone API
+// @version 1.0
+// @description API для пет проекта.
+// @host localhost:3000
+// @BasePath /
 func main() {
+	// Загружаем .env файл
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found")
 	}
 
 	// Загрузка конфигурации
 	cfg := config.LoadConfig()
-	
+
 	// Инициализация подключения к PostgreSQL
 	dbpool, err := pgxpool.Connect(context.Background(), cfg.DBUrl)
 	if err != nil {
@@ -66,7 +74,7 @@ func main() {
 	// Инициализация Fiber
 	app := fiber.New()
 
-	// Маршрут для Swagger-документации
+	// Маршрут для Swagger-документации (Swagger UI)
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
 	// Публичные маршруты
