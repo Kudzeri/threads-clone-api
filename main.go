@@ -10,15 +10,16 @@ import (
 	"github.com/Kudzeri/threads-clone-api/middleware"
 	"github.com/Kudzeri/threads-clone-api/repository"
 	"github.com/Kudzeri/threads-clone-api/usecase"
-
+	
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/swagger"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	_ "github.com/Kudzeri/threads-clone-api/docs" // Импорт сгенерированных swagger-документов
+	_ "github.com/Kudzeri/threads-clone-api/docs" // импорт сгенерированных swagger-документов
 )
 
 // @title Threads Clone API
@@ -73,6 +74,13 @@ func main() {
 
 	// Инициализация Fiber
 	app := fiber.New()
+
+	// Подключаем middleware CORS 
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*", 
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+	}))
 
 	// Маршрут для Swagger-документации (Swagger UI)
 	app.Get("/swagger/*", swagger.HandlerDefault)
